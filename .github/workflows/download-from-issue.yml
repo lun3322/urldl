@@ -6,7 +6,7 @@ on:
 
 permissions:
   issues: write
-  
+
 jobs:
   download:
     if: contains(github.event.issue.title, '[DOWNLOAD]')
@@ -19,10 +19,8 @@ jobs:
           URL=$(echo "${{ github.event.issue.body }}" | grep -oP 'https?://[^\s]+' | head -1)
           echo "download_url=$URL" >> $GITHUB_OUTPUT
           
-          # 从 URL 中提取文件名
+          # 1. 首先从 URL 中提取文件名
           FILENAME=$(basename "$URL" | cut -d'?' -f1)
-          # 如果没有获取到文件名，使用默认名称
-          [ -z "$FILENAME" ] && FILENAME="downloaded-file-$(date +%s)"
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
 
       - name: Validate URL
@@ -34,21 +32,45 @@ jobs:
           echo "✅ 将下载: ${{ steps.parse.outputs.download_url }}"
           echo "✅ 文件名: ${{ steps.parse.outputs.filename }}"
 
-      - name: Download file
+      - name: Download file and extract filename from headers
+        id: download
         run: |
+          INITIAL_FILENAME="${{ steps.parse.outputs.filename }}"
+          FINAL_FILENAME="$INITIAL_FILENAME"
+          
+          # 2. 尝试从 HTTP 响应头中获取文件名 (Content-Disposition)
+          HEADER_FILENAME=$(curl -sI "${{ steps.parse.outputs.download_url }}" \
+            -H "User-Agent: Mozilla/5.0" | \
+            grep -i "content-disposition" | \
+            sed -n 's/.*filename="\([^"]*\)".*/\1/p')
+          
+          if [ -n "$HEADER_FILENAME" ]; then
+            FINAL_FILENAME="$HEADER_FILENAME"
+            echo "📄 从响应头中获取文件名: $FINAL_FILENAME"
+          elif [ -n "$INITIAL_FILENAME" ] && [ "$INITIAL_FILENAME" != "/" ]; then
+            echo "📄 使用从 URL 中提取的文件名: $FINAL_FILENAME"
+          else
+            # 3. 最后使用默认文件名
+            FINAL_FILENAME="downloaded-file-$(date +%s)"
+            echo "📄 使用默认文件名: $FINAL_FILENAME"
+          fi
+          
+          echo "final_filename=$FINAL_FILENAME" >> $GITHUB_OUTPUT
+          
+          # 下载文件
           curl -L \
             -H "User-Agent: Mozilla/5.0" \
             "${{ steps.parse.outputs.download_url }}" \
-            -o "${{ steps.parse.outputs.filename }}"
+            -o "$FINAL_FILENAME"
 
       - name: Check file
-        run: ls -lh "${{ steps.parse.outputs.filename }}"
+        run: ls -lh "${{ steps.download.outputs.final_filename }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: downloads
-          path: ${{ steps.parse.outputs.filename }}
+          path: ${{ steps.download.outputs.final_filename }}
 
       - name: Comment on issue
         uses: actions/github-script@v6
@@ -58,7 +80,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '✅ 文件下载成功！\n\n📥 下载链接: ${{ steps.parse.outputs.download_url }}\n📄 文件名: ${{ steps.parse.outputs.filename }}\n\n已自动关闭此 Issue。'
+              body: '✅ 文件下载成功！\n\n📥 下载链接: ${{ steps.parse.outputs.download_url }}\n📄 文件名: ${{ steps.download.outputs.final_filename }}\n\n已自动关闭此 Issue。'
             })
 
       - name: Close issue
