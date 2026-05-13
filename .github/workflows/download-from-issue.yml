@@ -42,7 +42,7 @@ jobs:
         run: ls -lh "${{ steps.parse.outputs.filename }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: downloads
           path: ${{ steps.parse.outputs.filename }}
