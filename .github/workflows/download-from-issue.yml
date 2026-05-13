@@ -16,9 +16,10 @@ jobs:
           URL=$(echo "${{ github.event.issue.body }}" | grep -oP 'https?://[^\s]+' | head -1)
           echo "download_url=$URL" >> $GITHUB_OUTPUT
           
-          # 从 Issue Title 中提取文件名（可选）
-          FILENAME=$(echo "${{ github.event.issue.title }}" | sed 's/\[DOWNLOAD\]//g' | xargs)
-          [ -z "$FILENAME" ] && FILENAME="downloaded-file"
+          # 从 URL 中提取文件名
+          FILENAME=$(basename "$URL" | cut -d'?' -f1)
+          # 如果没有获取到文件名，使用默认名称
+          [ -z "$FILENAME" ] && FILENAME="downloaded-file-$(date +%s)"
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
 
       - name: Validate URL
@@ -28,6 +29,7 @@ jobs:
             exit 1
           fi
           echo "✅ 将下载: ${{ steps.parse.outputs.download_url }}"
+          echo "✅ 文件名: ${{ steps.parse.outputs.filename }}"
 
       - name: Download file
         run: |
