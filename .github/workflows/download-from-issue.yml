@@ -19,7 +19,7 @@ jobs:
           URL=$(echo "${{ github.event.issue.body }}" | grep -oP 'https?://[^\s]+' | head -1)
           echo "download_url=$URL" >> $GITHUB_OUTPUT
           
-          # 1. 首先从 URL 中提取文件名
+          # 从 URL 中提取文件名（备用）
           FILENAME=$(basename "$URL" | cut -d'?' -f1)
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
 
@@ -38,7 +38,7 @@ jobs:
           INITIAL_FILENAME="${{ steps.parse.outputs.filename }}"
           FINAL_FILENAME="$INITIAL_FILENAME"
           
-          # 2. 尝试从 HTTP 响应头中获取文件名 (Content-Disposition)
+          # 1. 尝试从 HTTP 响应头中获取文件名 (Content-Disposition)
           HEADER_FILENAME=$(curl -sI "${{ steps.parse.outputs.download_url }}" \
             -H "User-Agent: Mozilla/5.0" | \
             grep -i "content-disposition" | \
@@ -47,10 +47,11 @@ jobs:
           if [ -n "$HEADER_FILENAME" ]; then
             FINAL_FILENAME="$HEADER_FILENAME"
             echo "📄 从响应头中获取文件名: $FINAL_FILENAME"
+          # 2. 从 URL 中提取文件名
           elif [ -n "$INITIAL_FILENAME" ] && [ "$INITIAL_FILENAME" != "/" ]; then
-            echo "📄 使用从 URL 中提取的文件名: $FINAL_FILENAME"
+            echo "📄 从 URL 中提取文件名: $FINAL_FILENAME"
           else
-            # 3. 最后使用默认文件名
+            # 3. 使用默认文件名
             FINAL_FILENAME="downloaded-file-$(date +%s)"
             echo "📄 使用默认文件名: $FINAL_FILENAME"
           fi
@@ -76,11 +77,12 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
+            const artifactUrl = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '✅ 文件下载成功！\n\n📥 下载链接: ${{ steps.parse.outputs.download_url }}\n📄 文件名: ${{ steps.download.outputs.final_filename }}\n\n已自动关闭此 Issue。'
+              body: '✅ 文件下载成功！\n\n📥 原始链接: ${{ steps.parse.outputs.download_url }}\n📄 文件名: ${{ steps.download.outputs.final_filename }}\n\n📦 Artifact 链接: [查看下载]('+artifactUrl+')\n\n已自动关闭此 Issue。'
             })
 
       - name: Close issue
